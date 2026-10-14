@@ -1,9 +1,12 @@
-const CACHE = 'manajemenx-v1';
+const CACHE = 'manajemenx-v3';  // naikkan versi
 const ASSETS = [
   '/', '/index.html', '/manifest.json', '/icon.svg',
   '/app.js', '/core.js', '/import.js',
   '/mod-dashboard.js', '/mod-pembayaran.js', '/mod-penerimaan.js',
-  '/mod-pembelian.js', '/mod-barang.js', '/mod-jurnal.js', '/mod-kaskecil.js',
+  '/mod-pecah-dompet.js', '/mod-pembelian.js', '/mod-faktur-penjualan.js',
+  '/mod-purchase-request.js', '/mod-inventory.js', '/mod-working-order.js',
+  '/mod-jurnal.js', '/mod-kaskecil.js',
+  '/mod-akun.js', '/mod-barang.js', '/mod-supplier.js', '/mod-customer.js',
 ];
 
 self.addEventListener('install', (e) => {
