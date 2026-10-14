@@ -1,78 +1,142 @@
 /* =========================================================
-   sw.js — v4 (network-first untuk HTML, cache-first untuk asset)
+   sw.js — v5
+   Network-first HTML & JS, cache-first asset statis
    ========================================================= */
-const CACHE = 'manajemenx-v5'; // ⚠️ NAIKKAN SETIAP DEPLOY
 
+const CACHE = 'manajemenx-v5';
+const DEBUG = true;
+
+/* Pre-cache hanya inti — modul lain on-demand */
 const ASSETS = [
-  '/', '/index.html', '/manifest.json', '/icon.svg',
-  '/app.js', '/core.js', '/import.js',
-  '/mod-dashboard.js', '/mod-pembayaran.js', '/mod-penerimaan.js',
-  '/mod-pecah-dompet.js', '/mod-pembelian.js', '/mod-faktur-penjualan.js',
-  '/mod-purchase-request.js', '/mod-inventory.js', '/mod-working-order.js',
-  '/mod-jurnal.js', '/mod-kaskecil.js',
-  '/mod-akun.js', '/mod-barang.js', '/mod-supplier.js', '/mod-customer.js',
+  '/',
+  '/index.html',
+  '/manifest.json',
+  '/icon.svg',
+  '/app.js',
+  '/core.js',
 ];
 
-/* ---------- Install ---------- */
-self.addEventListener('install', (event) => {
-  self.skipWaiting(); // langsung aktif
-  event.waitUntil(
-    caches.open(CACHE).then((cache) => cache.addAll(ASSETS))
+function log(...args) { if (DEBUG) console.log('[SW]', ...args); }
+
+function isGoogleAPI(url) {
+  return (
+    url.hostname.includes('script.google.com') ||
+    url.hostname.includes('googleusercontent.com') ||
+    url.hostname.includes('googleapis.com')
   );
-});
-
-/* ---------- Activate ---------- */
-self.addEventListener('activate', (event) => {
-  event.waitUntil(
-    caches.keys()
-      .then((keys) => Promise.all(
-        keys.filter((k) => k !== CACHE).map((k) => caches.delete(k))
-      ))
-      .then(() => self.clients.claim()) // kontrol tab aktif sekarang
-  );
-});
-
-/* ---------- Message: SKIP_WAITING ---------- */
-self.addEventListener('message', (event) => {
-  if (event.data && event.data.type === 'SKIP_WAITING') {
-    self.skipWaiting();
-  }
-});
-
-/* ---------- Fetch strategy ---------- */
-self.addEventListener('fetch', (event) => {
-  const { request } = event;
-
-  // Lewati request non-GET & API Apps Script
-  if (request.method !== 'GET') return;
-  if (request.url.includes('script.google.com')) return;
-  if (request.url.includes('googleusercontent.com')) return;
-
-  const url = new URL(request.url);
-  const isHTML =
+}
+function isHTML(request, url) {
+  return (
     request.mode === 'navigate' ||
     (request.headers.get('accept') || '').includes('text/html') ||
     url.pathname === '/' ||
-    url.pathname.endsWith('.html');
+    url.pathname.endsWith('.html')
+  );
+}
+const isJS = (url) => url.pathname.endsWith('.js');
+const isStatic = (url) => /\.(png|jpg|jpeg|gif|svg|webp|ico|woff|woff2|ttf|otf|css)$/i.test(url.pathname);
 
-  // ✅ HTML & JS: Network-first (selalu coba terbaru dulu)
-  if (isHTML || url.pathname.endsWith('.js')) {
+self.addEventListener('install', (event) => {
+  log('Installing v5...');
+  self.skipWaiting();
+  event.waitUntil(
+    caches.open(CACHE).then((cache) => {
+      log('Pre-caching', ASSETS.length, 'assets');
+      return cache.addAll(ASSETS).catch((err) => log('⚠️ pre-cache partial fail:', err));
+    })
+  );
+});
+
+self.addEventListener('activate', (event) => {
+  log('Activating v5...');
+  event.waitUntil(
+    caches.keys()
+      .then((keys) => {
+        log('Existing caches:', keys);
+        return Promise.all(
+          keys.filter((k) => k !== CACHE).map((k) => {
+            log('Deleting old cache:', k);
+            return caches.delete(k);
+          })
+        );
+      })
+      .then(() => self.clients.claim())
+      .then(() => log('✅ Activated & claimed clients'))
+  );
+});
+
+self.addEventListener('message', (event) => {
+  const data = event.data || {};
+  if (data.type === 'SKIP_WAITING') { log('SKIP_WAITING'); self.skipWaiting(); }
+  if (data.type === 'CLEAR_CACHE') {
+    log('CLEAR_CACHE');
+    caches.keys().then((keys) => Promise.all(keys.map((k) => caches.delete(k))))
+      .then(() => event.source?.postMessage({ type: 'CACHE_CLEARED' }));
+  }
+  if (data.type === 'PING') {
+    event.source?.postMessage({ type: 'PONG', version: CACHE });
+  }
+});
+
+self.addEventListener('fetch', (event) => {
+  const { request } = event;
+  const url = new URL(request.url);
+
+  if (request.method !== 'GET') return;
+  if (isGoogleAPI(url)) return;
+  if (url.origin !== self.location.origin && !isStatic(url)) return;
+
+  /* HTML & JS → Network-first */
+  if (isHTML(request, url) || isJS(url)) {
     event.respondWith(
       fetch(request)
         .then((res) => {
-          if (res && res.status === 200) {
+          if (res && res.status === 200 && url.origin === self.location.origin) {
             const clone = res.clone();
             caches.open(CACHE).then((c) => c.put(request, clone));
           }
+          log('🌐', url.pathname, res.status);
           return res;
         })
-        .catch(() => caches.match(request)) // fallback cache kalau offline
+        .catch(() => {
+          log('🔌 offline fallback:', url.pathname);
+          return caches.match(request).then((cached) => {
+            if (cached) return cached;
+            if (isHTML(request, url)) return caches.match('/index.html');
+          });
+        })
     );
     return;
   }
 
-  // ✅ Aset statis (icon, gambar, font): Cache-first
+  /* Asset statis → Cache-first */
+  if (isStatic(url)) {
+    event.respondWith(
+      caches.match(request).then((cached) => {
+        if (cached) { log('📦', url.pathname); return cached; }
+        return fetch(request).then((res) => {
+          if (res && res.status === 200) {
+            const clone = res.clone();
+            caches.open(CACHE).then((c) => c.put(request, clone));
+          }
+          log('🌐 static', url.pathname, res.status);
+          return res;
+        });
+      })
+    );
+    return;
+  }
+
+  /* Lainnya → Network with cache fallback */
   event.respondWith(
-    caches.match(request).then((cached) => cached || fetch(request))
+    fetch(request)
+      .then((res) => {
+        if (res && res.status === 200 && url.origin === self.location.origin) {
+          const clone = res.clone();
+          caches.open(CACHE).then((c) => c.put(request, clone));
+        }
+        return res;
+      })
+      .catch(() => caches.match(request))
   );
 });
