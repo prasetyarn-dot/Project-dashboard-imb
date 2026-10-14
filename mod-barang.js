@@ -1,0 +1,2 @@
+const BarangModule = (() => {
+  const U
