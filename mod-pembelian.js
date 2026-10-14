@@ -1,49 +1,53 @@
 /* =========================================================
-   mod-pembelian.js — Faktur Pembelian (derived view)
+   mod-pembelian.js — Faktur Pembelian (FIXED)
+   Baca langsung dari sheet Pembayaran, filter di client
    ========================================================= */
 const PembelianModule = (() => {
 
   let state = {
-    all: [],       // semua baris faktur
-    filtered: [],  // hasil filter
-    filter: {
-      q: '',
-      dari: '',
-      sampai: '',
-    },
+    all: [],
+    filtered: [],
+    filter: { q: '', dari: '', sampai: '' },
   };
 
-  /* ---------- Load dari sheet ---------- */
+  /* ---------- Load dari sheet Pembayaran ---------- */
   async function load() {
-    const rows = await Core.readSheet(Core.SHEETS.FAKTUR_PEMBELIAN);
-    // Kolom: A=Id, B=Tanggal, C=Supplier, D=Total, E=Akun, F=Metode, G=Bukti
-    state.all = rows.slice(1).filter((r) => r[0]); // buang header + baris kosong
+    const rows = await Core.readSheet(Core.SHEETS.PEMBAYARAN);
+    // Kolom: A=Jenis, B=Id, C=Tanggal, D=Supplier, E=Metode,
+    //        F=Akun Kas, G=Total, H=Sisa Hutang, I=Bukti,
+    //        J=Terbitkan Faktur, K=Status, L=Catatan
+    state.all = rows.slice(1)
+      .filter((r) => String(r[9] || '').toLowerCase() === 'ya') // Hanya "Terbitkan Faktur" = Ya
+      .map((r) => ({
+        id: r[1],
+        tgl: String(r[2] || '').slice(0, 10),
+        supplier: r[3],
+        total: Core.num(r[6]),
+        akun: r[5],
+        metode: r[4],
+        bukti: r[8] || '',
+      }));
     applyFilter();
   }
 
-  /* ---------- Filter lokal ---------- */
   function applyFilter() {
     const { q, dari, sampai } = state.filter;
     const qq = q.trim().toLowerCase();
-
     state.filtered = state.all.filter((r) => {
-      const tgl = String(r[1] || '').slice(0, 10);
-      if (dari && tgl < dari) return false;
-      if (sampai && tgl > sampai) return false;
+      if (dari && r.tgl < dari) return false;
+      if (sampai && r.tgl > sampai) return false;
       if (qq) {
-        const hay = `${r[0]} ${r[2]} ${r[3]} ${r[4]} ${r[5]}`.toLowerCase();
+        const hay = `${r.id} ${r.supplier} ${r.akun} ${r.metode}`.toLowerCase();
         if (!hay.includes(qq)) return false;
       }
       return true;
     });
   }
 
-  /* ---------- Hitung total ---------- */
   function totals(rows) {
-    return rows.reduce((s, r) => s + Core.num(r[3]), 0);
+    return rows.reduce((s, r) => s + Core.num(r.total), 0);
   }
 
-  /* ---------- Render ---------- */
   async function render(view) {
     view.innerHTML = `<div class="loading"><div class="spinner"></div>Memuat faktur...</div>`;
     await load();
@@ -99,13 +103,13 @@ const PembelianModule = (() => {
       <div class="card">
         <h3>Daftar Faktur Pembelian</h3>
         ${Core.renderTable(state.filtered.map((r) => ({
-          id: r[0],
-          tgl: String(r[1] || '').slice(0, 10),
-          supplier: r[2],
-          total: Core.rupiah(r[3]),
-          akun: r[4],
-          metode: r[5],
-          bukti: r[6] ? '🔗' : '—',
+          id: r.id,
+          tgl: r.tgl,
+          supplier: r.supplier,
+          total: Core.rupiah(r.total),
+          akun: r.akun,
+          metode: r.metode,
+          bukti: r.bukti ? '🔗' : '—',
         })), [
           { key: 'id', label: 'ID' },
           { key: 'tgl', label: 'Tanggal' },
@@ -116,13 +120,12 @@ const PembelianModule = (() => {
           { key: 'bukti', label: 'Bukti' },
         ])}
         <p style="margin-top:12px;color:var(--muted);font-size:12px;">
-          ℹ️ Sheet ini otomatis terisi dari sheet <strong>Pembayaran</strong> yang kolom
-          "Terbitkan Faktur" = <em>Ya</em>. Input baru dilakukan di modul Pembayaran.
+          ℹ️ Faktur muncul dari <strong>Pembayaran</strong> yang kolom
+          "Terbitkan Faktur" = <em>Ya</em>.
         </p>
       </div>
     `;
 
-    // Events
     document.getElementById('filterForm').addEventListener('submit', (e) => {
       e.preventDefault();
       const d = Core.serializeForm(e.target);
@@ -140,12 +143,11 @@ const PembelianModule = (() => {
     document.getElementById('btnExport').addEventListener('click', exportCSV);
   }
 
-  /* ---------- Export CSV ---------- */
   function exportCSV() {
     const header = ['Id Pembayaran', 'Tanggal', 'Supplier', 'Total', 'Akun Kas', 'Metode', 'Bukti'];
     const lines = [header.join(',')];
     state.filtered.forEach((r) => {
-      const row = [r[0], r[1], r[2], r[3], r[4], r[5], r[6]]
+      const row = [r.id, r.tgl, r.supplier, r.total, r.akun, r.metode, r.bukti]
         .map((v) => `"${String(v ?? '').replace(/"/g, '""')}"`);
       lines.push(row.join(','));
     });
