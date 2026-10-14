@@ -1,7 +1,7 @@
 /* =========================================================
    sw.js — v4 (network-first untuk HTML, cache-first untuk asset)
    ========================================================= */
-const CACHE = 'manajemenx-v4'; // ⚠️ NAIKKAN SETIAP DEPLOY
+const CACHE = 'manajemenx-v5'; // ⚠️ NAIKKAN SETIAP DEPLOY
 
 const ASSETS = [
   '/', '/index.html', '/manifest.json', '/icon.svg',
