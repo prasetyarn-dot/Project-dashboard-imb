@@ -81,4 +81,40 @@ const WorkingOrderModule = (() => {
 
       <div class="card">
         <h3>Daftar Working Order</h3>
-        ${Core.renderTable(data.map((r)
+        ${Core.renderTable(data.map((r) => ({
+          id: r[1], jenis: r[0], barang: r[2],
+          ongkos: Core.rupiah(r[3]), status: r[4],
+          deadline: r[5], ref: r[6],
+        })), [
+          { key: 'id', label: 'ID' },
+          { key: 'jenis', label: 'Jenis' },
+          { key: 'barang', label: 'Barang' },
+          { key: 'ongkos', label: 'Ongkos' },
+          { key: 'status', label: 'Status' },
+          { key: 'deadline', label: 'Deadline' },
+          { key: 'ref', label: 'Ref Faktur' },
+        ])}
+      </div>
+    `;
+
+    document.getElementById('formWO').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const f = e.target;
+      const d = Core.serializeForm(f);
+      const btn = f.querySelector('button');
+      btn.disabled = true;
+      try {
+        await Core.appendRow(Core.SHEETS.WORKING_ORDER, [
+          d.jenis, d.id, d.barang || '', Number(d.ongkos) || 0,
+          d.status, d.deadline || '', d.ref || '', d.catatan || '',
+        ]);
+        Core.toast('✅ WO tersimpan');
+        await WorkingOrderModule.render(document.getElementById('view'));
+      } catch (err) {
+        Core.toast('❌ ' + err.message);
+      } finally { btn.disabled = false; }
+    });
+  }
+
+  return { render };
+})();
