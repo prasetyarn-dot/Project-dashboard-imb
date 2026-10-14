@@ -76,7 +76,38 @@ window.addEventListener('DOMContentLoaded', () => {
   render();
 
   // Register service worker
-  if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('/sw.js').catch(() => {});
-  }
-});
+ /* ---------- Register service worker dengan auto-update ---------- */
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', async () => {
+    try {
+      const reg = await navigator.serviceWorker.register('/sw.js', { scope: '/' });
+
+      // Cek update setiap 30 detik
+      setInterval(() => reg.update(), 30000);
+
+      // Kalau ada SW baru menunggu → paksa activate
+      reg.addEventListener('updatefound', () => {
+        const newSW = reg.installing;
+        if (!newSW) return;
+        newSW.addEventListener('statechange', () => {
+          if (newSW.state === 'installed' && navigator.serviceWorker.controller) {
+            // Ada SW baru, paksa aktif & reload
+            newSW.postMessage({ type: 'SKIP_WAITING' });
+            setTimeout(() => window.location.reload(), 500);
+          }
+        });
+      });
+
+      // Kalau controller ganti → reload
+      let refreshing = false;
+      navigator.serviceWorker.addEventListener('controllerchange', () => {
+        if (refreshing) return;
+        refreshing = true;
+        window.location.reload();
+      });
+
+    } catch (e) {
+      console.warn('SW registration failed:', e);
+    }
+  });
+}
