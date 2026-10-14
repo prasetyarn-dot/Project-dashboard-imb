@@ -76,7 +76,7 @@ function render() {
 
   var token = ++renderToken;
 
-  loadScript(MODULE_DIR + route.file).then(function () {
+  loadScript(MODULE_DIR + 'mod-' + route.file).then(function () {
     if (token !== renderToken) return; // user sudah pindah menu
 
     var Module = getModule(route.global);
