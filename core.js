@@ -3,7 +3,7 @@
    ========================================================= */
 
 const Core = (() => {
-  // ⚠️ GANTI dengan URL Apps Script Web App kamu (lihat STEP 12)
+  // ⚠️ GANTI dengan URL Apps Script Web App kamu
   const API_URL = 'https://script.google.com/macros/s/AKfycbz1hR7QdKslmZXFOC-4B2Yw1pDrd5nxphWBCrZOnqvPAwuM6uvGKXbBpVQX3aNJ58DDrg/exec';
 
   /* ---------- Toast ---------- */
@@ -17,7 +17,7 @@ const Core = (() => {
     toastTimer = setTimeout(() => el.classList.remove('show'), ms);
   }
 
-  /* ---------- Format helpers ---------- */
+  /* ---------- Format ---------- */
   const rupiah = (n) =>
     new Intl.NumberFormat('id-ID', {
       style: 'currency', currency: 'IDR', maximumFractionDigits: 0,
@@ -37,7 +37,7 @@ const Core = (() => {
     })[c]);
   }
 
-  /* ---------- Sheets API (via Apps Script) ---------- */
+  /* ---------- API ---------- */
   async function apiGet(action, params = {}) {
     const q = new URLSearchParams({ action, ...params });
     const url = `${API_URL}?${q.toString()}`;
@@ -51,7 +51,6 @@ const Core = (() => {
   async function apiPost(action, payload = {}) {
     const res = await fetch(API_URL, {
       method: 'POST',
-      // text/plain menghindari preflight CORS di Apps Script
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
       body: JSON.stringify({ action, payload }),
     });
@@ -61,10 +60,33 @@ const Core = (() => {
     return json.data;
   }
 
-  const readSheet  = (sheet) => apiGet('read',  { sheet });
-  const appendRow  = (sheet, values) => apiPost('append', { sheet, values });
-  const updateRow  = (sheet, rowIndex, values) => apiPost('update', { sheet, rowIndex, values });
-  const deleteRow  = (sheet, rowIndex) => apiPost('delete', { sheet, rowIndex });
+  /* ---------- Sheet ops (raw) ---------- */
+  async function readSheet(sheet, limit) {
+    const params = { sheet };
+    if (limit) params.limit = limit;
+    return await apiGet('read', params);
+  }
+  const appendRow = (sheet, values) => apiPost('append', { sheet, values });
+  const updateRow = (sheet, rowIndex, values) => apiPost('update', { sheet, rowIndex, values });
+  const deleteRow = (sheet, rowIndex) => apiPost('delete', { sheet, rowIndex });
+
+  /* ---------- In-memory cache (15 detik) ---------- */
+  const _cache = new Map();
+  const _CACHE_TTL = 15000;
+
+  async function readSheetCached(sheet, limit) {
+    const now = Date.now();
+    const hit = _cache.get(sheet);
+    if (hit && now - hit.t < _CACHE_TTL) return hit.v;
+    const v = await readSheet(sheet, limit);
+    _cache.set(sheet, { t: now, v });
+    return v;
+  }
+
+  function invalidateCache(sheet) {
+    if (sheet) _cache.delete(sheet);
+    else _cache.clear();
+  }
 
   /* ---------- Connection status ---------- */
   function setOnline(ok) {
@@ -97,12 +119,10 @@ const Core = (() => {
     form.querySelectorAll('.error').forEach((e) => e.remove());
   }
 
-  /* ---------- Render helpers ---------- */
+  /* ---------- Table render ---------- */
   function renderTable(rows, columns) {
     if (!rows || rows.length === 0) {
-      return `<div class="card" style="text-align:center;color:var(--muted);">
-        Belum ada data
-      </div>`;
+      return `<div class="card" style="text-align:center;color:var(--muted);">Belum ada data</div>`;
     }
     const head = columns.map((c) => `<th>${escapeHtml(c.label)}</th>`).join('');
     const body = rows.map((r) =>
@@ -114,7 +134,45 @@ const Core = (() => {
     </table></div>`;
   }
 
-  /* ---------- Sheet name constants ---------- */
+  /* ---------- ID generator ---------- */
+  async function generateId(prefix, sheet, colIndex) {
+    const today = new Date();
+    const ymd = today.getFullYear().toString()
+      + String(today.getMonth() + 1).padStart(2, '0')
+      + String(today.getDate()).padStart(2, '0');
+
+    const rows = await readSheet(sheet);
+    const pattern = new RegExp(`^${prefix}-${ymd}-(\\d+)$`);
+    let max = 0;
+
+    rows.slice(1).forEach((r) => {
+      const v = String(r[colIndex] || '').trim();
+      const m = v.match(pattern);
+      if (m) {
+        const n = parseInt(m[1], 10);
+        if (n > max) max = n;
+      }
+    });
+
+    return `${prefix}-${ymd}-${String(max + 1).padStart(3, '0')}`;
+  }
+
+  const KODE_JENIS = {
+    'Pembelian Barang':   'PB',
+    'Pembayaran Hutang':  'PH',
+    'Biaya Operasional':  'BO',
+    'Pembelian Aset':     'PA',
+    'Penjualan':          'PJ',
+    'Pelunasan Piutang':  'PP',
+    'Pendapatan Lain':    'PL',
+    'Setoran Modal':      'SM',
+    'Pecah Dompet':       'PD',
+    'Transfer Internal':  'TI',
+    'Setoran ke Bank':    'SB',
+    'Penarikan Kas':      'PK',
+  };
+
+  /* ---------- Sheet names ---------- */
   const SHEETS = {
     MASTER_AKUN:      '📋 Master Akun',
     MASTER_SUPPLIER:  '📋 Master Supplier',
@@ -129,12 +187,17 @@ const Core = (() => {
     INVENTORY:        '📦 Inventory',
     WORKING_ORDER:    '🛠️ Working Order',
     DASHBOARD:        '📊 Dashboard',
+    JURNAL_UMUM:      '📒 Jurnal Umum',
+    KAS_KECIL:        '💵 Kas Kecil',
   };
 
   return {
     toast, rupiah, num, today, escapeHtml,
-    apiGet, apiPost, readSheet, appendRow, updateRow, deleteRow,
+    apiGet, apiPost,
+    readSheet, readSheetCached, invalidateCache,
+    appendRow, updateRow, deleteRow,
     setOnline, serializeForm, showError, clearErrors, renderTable,
+    generateId, KODE_JENIS,
     SHEETS,
   };
 })();
