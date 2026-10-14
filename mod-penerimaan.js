@@ -1,4 +1,4 @@
-// mod-penerimaan.js — contoh
+
 const PenerimaanModule = (() => {
   async function render(view) {
     const rows = await Core.readSheet(Core.SHEETS.PENERIMAAN);
