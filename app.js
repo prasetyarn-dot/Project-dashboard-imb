@@ -3,13 +3,21 @@
    ========================================================= */
 
 const Routes = {
-  dashboard: { title: 'Dashboard',       module: () => DashboardModule },
-  pembayaran:{ title: 'Pembayaran',      module: () => PembayaranModule },
-  penerimaan:{ title: 'Penerimaan Uang', module: () => PenerimaanModule },
-  pembelian: { title: 'Faktur Pembelian',module: () => PembelianModule },
-  barang:    { title: 'Barang',          module: () => BarangModule },
-  jurnal:    { title: 'Jurnal',          module: () => JurnalModule },
-  kaskecil:  { title: 'Kas Kecil',       module: () => KasKecilModule },
+  dashboard:           { title: 'Dashboard',          module: () => DashboardModule },
+  pembayaran:          { title: 'Pembayaran',         module: () => PembayaranModule },
+  penerimaan:          { title: 'Penerimaan Uang',    module: () => PenerimaanModule },
+  'pecah-dompet':      { title: 'Pecah Dompet',       module: () => PecahDompetModule },
+  'faktur-pembelian':  { title: 'Faktur Pembelian',   module: () => PembelianModule },
+  'faktur-penjualan':  { title: 'Faktur Penjualan',   module: () => FakturPenjualanModule },
+  'purchase-request':  { title: 'Purchase Request',   module: () => PurchaseRequestModule },
+  inventory:           { title: 'Inventory',          module: () => InventoryModule },
+  'working-order':     { title: 'Working Order',      module: () => WorkingOrderModule },
+  jurnal:              { title: 'Jurnal Umum',        module: () => JurnalModule },
+  kaskecil:            { title: 'Kas Kecil',          module: () => KasKecilModule },
+  akun:                { title: 'Master Akun',        module: () => AkunModule },
+  barang:              { title: 'Master Barang',      module: () => BarangModule },
+  supplier:            { title: 'Master Supplier',    module: () => SupplierModule },
+  customer:            { title: 'Master Customer',    module: () => CustomerModule },
 };
 
 function currentRoute() {
