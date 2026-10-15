@@ -11,7 +11,6 @@ const PurchaseRequestModule = (() => {
   const STATUS = ['Draft', 'Approved', 'Ordered', 'Received', 'Cancelled'];
 
   // Nomor baris sheet = index data + ROW_OFFSET (header di baris 1, data mulai baris 2).
-  // Kalau setelah dites update/hapus kena baris yang salah, ubah angka ini (mis. jadi 1).
   const ROW_OFFSET = 2;
 
   let current = [];       // { r: [...], row: nomorBaris }
@@ -49,6 +48,22 @@ const PurchaseRequestModule = (() => {
       Core.toast('❌ Gagal membuat ID: ' + err.message);
       return '';
     }
+  }
+
+  // Cari nomor baris sheet berdasarkan ID (selalu baca data terbaru)
+  async function cariBaris(id) {
+    const rows = await Core.readSheet(Core.SHEETS.PURCHASE_REQUEST);
+    const target = String(id).trim();
+    const cocok = [];
+    for (let i = 1; i < rows.length; i++) {
+      if (String(rows[i][1] || '').trim() === target) {
+        cocok.push((i - 1) + ROW_OFFSET);
+      }
+    }
+    if (cocok.length > 1) {
+      throw new Error('ID ' + target + ' kembar di sheet (baris ' + cocok.join(', ') + '). Hapus salah satu di Google Sheets dulu.');
+    }
+    return cocok[0] || null;
   }
 
   async function render(view) {
@@ -207,8 +222,12 @@ const PurchaseRequestModule = (() => {
         if (!confirm('Hapus PR ' + item.r[1] + '?\nData tidak bisa dikembalikan.')) return;
         bHapus.disabled = true;
         try {
-                    const baris = await cariBaris(item.r[1]);
-          if (!baris) { Core.toast('⚠️ Data tidak ditemukan, muat ulang halaman'); bHapus.disabled = false; return; }
+          const baris = await cariBaris(item.r[1]);
+          if (!baris) {
+            Core.toast('⚠️ Data tidak ditemukan, muat ulang halaman');
+            bHapus.disabled = false;
+            return;
+          }
           await Core.deleteRow(Core.SHEETS.PURCHASE_REQUEST, baris);
           Core.invalidateCache(Core.SHEETS.PURCHASE_REQUEST);
           Core.toast('🗑️ PR dihapus');
@@ -239,7 +258,7 @@ const PurchaseRequestModule = (() => {
           d.status, d.catatan || '',
         ];
 
-                const barisAda = await cariBaris(d.id);
+        const barisAda = await cariBaris(d.id);
         if (barisAda) {
           await Core.updateRow(Core.SHEETS.PURCHASE_REQUEST, barisAda, values);
         } else {
