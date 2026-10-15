@@ -11,11 +11,12 @@ const PurchaseRequestModule = (() => {
   const STATUS = ['Draft', 'Approved', 'Ordered', 'Received', 'Cancelled'];
 
   // Nomor baris sheet = index data + ROW_OFFSET (header di baris 1, data mulai baris 2).
-  // Kalau setelah dites update masuk ke baris yang salah, ubah angka ini (mis. jadi 1).
+  // Kalau setelah dites update/hapus kena baris yang salah, ubah angka ini (mis. jadi 1).
   const ROW_OFFSET = 2;
 
-  let current = [];     // data yang sedang tampil: { r: [...], row: nomorBaris }
+  let current = [];       // { r: [...], row: nomorBaris }
   let editingRow = null;
+  let showAll = false;    // false = 20 terakhir, true = semua
 
   function opt(list, sel) {
     return list.map((v) =>
@@ -23,7 +24,7 @@ const PurchaseRequestModule = (() => {
     ).join('');
   }
 
-  // Ubah nilai tanggal dari sheet jadi format yyyy-mm-dd (pakai zona waktu lokal)
+  // Ubah nilai tanggal dari sheet jadi yyyy-mm-dd (zona waktu lokal)
   function toInputDate(v) {
     if (!v) return '';
     const s = String(v);
@@ -35,11 +36,28 @@ const PurchaseRequestModule = (() => {
       String(d.getDate()).padStart(2, '0');
   }
 
+  // ID otomatis: PR-YYYYMMDD-URUTAN (kolom ID di sheet = index 1)
+  async function buatId(form) {
+    const idEl = form.querySelector('[name="id"]');
+    idEl.value = 'Membuat ID...';
+    try {
+      const id = await Core.generateId('PR', Core.SHEETS.PURCHASE_REQUEST, 1);
+      idEl.value = id;
+      return id;
+    } catch (err) {
+      idEl.value = '';
+      Core.toast('❌ Gagal membuat ID: ' + err.message);
+      return '';
+    }
+  }
+
   async function render(view) {
     const rows = await Core.readSheet(Core.SHEETS.PURCHASE_REQUEST);
-    current = rows.slice(1)
+    const semua = rows.slice(1)
       .map((r, i) => ({ r, row: i + ROW_OFFSET }))
-      .slice(-20).reverse();
+      .filter((x) => x.r[1]) // lewati baris kosong
+      .reverse();
+    current = showAll ? semua : semua.slice(0, 20);
     editingRow = null;
 
     const e = Core.escapeHtml;
@@ -53,7 +71,10 @@ const PurchaseRequestModule = (() => {
         <td>${e(x.r[6])}</td>
         <td>${e(toInputDate(x.r[8]))}</td>
         <td>${e(x.r[9])}</td>
-        <td><button type="button" class="btn btn-secondary" data-edit="${i}" style="padding:6px 12px;">✏️ Edit</button></td>
+        <td style="white-space:nowrap;">
+          <button type="button" class="btn btn-secondary" data-edit="${i}" style="padding:6px 12px;">✏️ Edit</button>
+          <button type="button" class="btn btn-danger" data-hapus="${i}" style="padding:6px 12px;">🗑️</button>
+        </td>
       </tr>`).join('');
 
     const tabel = current.length
@@ -73,7 +94,7 @@ const PurchaseRequestModule = (() => {
             </div>
             <div class="field">
               <label>Id PR</label>
-              <input name="id" required placeholder="PR-20261014-001" />
+              <input name="id" required readonly placeholder="Otomatis" />
             </div>
             <div class="field" style="grid-column: 1 / -1;">
               <label>Nama Barang</label>
@@ -118,12 +139,18 @@ const PurchaseRequestModule = (() => {
       </div>
 
       <div class="card" id="cardPR">
-        <h3>20 PR Terakhir</h3>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+          <h3 style="margin:0;">${showAll ? 'Semua PR' : '20 PR Terakhir'} (${current.length})</h3>
+          <button type="button" id="btnToggle" class="btn btn-secondary" style="padding:6px 12px;">
+            ${showAll ? 'Tampilkan 20 terakhir' : 'Tampilkan semua'}
+          </button>
+        </div>
         ${tabel}
       </div>
     `;
 
     const form = document.getElementById('formPR');
+    const idEl = form.querySelector('[name="id"]');
     const btnSimpan = document.getElementById('btnSimpan');
     const btnBatal = document.getElementById('btnBatal');
     const judul = document.getElementById('judulForm');
@@ -131,19 +158,19 @@ const PurchaseRequestModule = (() => {
     function keModeBaru() {
       editingRow = null;
       form.reset();
-      form.id.readOnly = false;
       judul.textContent = 'Input Purchase Request';
       btnSimpan.textContent = 'Simpan PR';
       btnBatal.classList.add('hidden');
+      buatId(form);
     }
 
     function keModeEdit(item) {
       const r = item.r;
       editingRow = item.row;
-      form.jenis.value = r[0] || '';
-      form.id.value = r[1] || '';
+      form.jenis.value = r[0] || JENIS[0];
+      idEl.value = r[1] || '';
       form.nama.value = r[2] || '';
-      form.uom.value = r[3] || '';
+      form.uom.value = r[3] || UOM[0];
       form.qty.value = r[4] ?? '';
       form.harga.value = r[5] ?? 0;
       form.priority.value = r[6] || 'Medium';
@@ -151,7 +178,6 @@ const PurchaseRequestModule = (() => {
       form.deadline.value = toInputDate(r[8]);
       form.status.value = r[9] || 'Draft';
       form.catatan.value = r[10] || '';
-      form.id.readOnly = true; // ID tidak boleh diubah saat edit
       judul.textContent = 'Edit Purchase Request: ' + r[1];
       btnSimpan.textContent = 'Update PR';
       btnBatal.classList.remove('hidden');
@@ -160,39 +186,74 @@ const PurchaseRequestModule = (() => {
 
     btnBatal.addEventListener('click', keModeBaru);
 
-    document.getElementById('cardPR').addEventListener('click', (ev) => {
-      const b = ev.target.closest('[data-edit]');
-      if (!b) return;
-      const item = current[Number(b.dataset.edit)];
-      if (item) keModeEdit(item);
+    document.getElementById('btnToggle').addEventListener('click', async () => {
+      showAll = !showAll;
+      Core.invalidateCache(Core.SHEETS.PURCHASE_REQUEST);
+      await PurchaseRequestModule.render(document.getElementById('view'));
+    });
+
+    document.getElementById('cardPR').addEventListener('click', async (ev) => {
+      const bEdit = ev.target.closest('[data-edit]');
+      if (bEdit) {
+        const item = current[Number(bEdit.dataset.edit)];
+        if (item) keModeEdit(item);
+        return;
+      }
+
+      const bHapus = ev.target.closest('[data-hapus]');
+      if (bHapus) {
+        const item = current[Number(bHapus.dataset.hapus)];
+        if (!item) return;
+        if (!confirm('Hapus PR ' + item.r[1] + '?\nData tidak bisa dikembalikan.')) return;
+        bHapus.disabled = true;
+        try {
+          await Core.deleteRow(Core.SHEETS.PURCHASE_REQUEST, item.row);
+          Core.invalidateCache(Core.SHEETS.PURCHASE_REQUEST);
+          Core.toast('🗑️ PR dihapus');
+          await PurchaseRequestModule.render(document.getElementById('view'));
+        } catch (err) {
+          Core.toast('❌ ' + err.message);
+          bHapus.disabled = false;
+        }
+      }
     });
 
     form.addEventListener('submit', async (ev) => {
       ev.preventDefault();
-      const d = Core.serializeForm(form);
-      const values = [
-        d.jenis, d.id, d.nama, d.uom, Number(d.qty) || 0,
-        Number(d.harga) || 0, d.priority, d.eta || '', d.deadline || '',
-        d.status, d.catatan || '',
-      ];
       const sedangEdit = editingRow !== null;
       btnSimpan.disabled = true;
       btnSimpan.textContent = 'Menyimpan...';
       try {
+        // Mode baru: buat ulang ID tepat sebelum simpan supaya urutan tidak kembar
+        if (!sedangEdit) {
+          const newId = await buatId(form);
+          if (!newId) { Core.toast('⚠️ ID gagal dibuat, coba lagi'); return; }
+        }
+
+        const d = Core.serializeForm(form);
+        const values = [
+          d.jenis, d.id, d.nama, d.uom, Number(d.qty) || 0,
+          Number(d.harga) || 0, d.priority, d.eta || '', d.deadline || '',
+          d.status, d.catatan || '',
+        ];
+
         if (sedangEdit) {
           await Core.updateRow(Core.SHEETS.PURCHASE_REQUEST, editingRow, values);
         } else {
           await Core.appendRow(Core.SHEETS.PURCHASE_REQUEST, values);
         }
         Core.invalidateCache(Core.SHEETS.PURCHASE_REQUEST);
-        Core.toast(sedangEdit ? '✅ PR diupdate' : '✅ PR tersimpan');
+        Core.toast(sedangEdit ? '✅ PR diupdate' : '✅ PR tersimpan: ' + d.id);
         await PurchaseRequestModule.render(document.getElementById('view'));
       } catch (err) {
         Core.toast('❌ ' + err.message);
+      } finally {
         btnSimpan.disabled = false;
-        btnSimpan.textContent = sedangEdit ? 'Update PR' : 'Simpan PR';
+        btnSimpan.textContent = editingRow !== null ? 'Update PR' : 'Simpan PR';
       }
     });
+
+    buatId(form); // isi ID otomatis saat halaman dibuka
   }
 
   return { render };
