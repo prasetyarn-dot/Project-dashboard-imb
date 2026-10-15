@@ -16,6 +16,23 @@ const PembayaranModule = (() => {
     ).join('');
   }
 
+  // FIX: ID otomatis KODE-YYYYMMDD-URUTAN (kolom ID di sheet = index 1)
+  async function updateId(form) {
+    const idEl = form.querySelector('[name="id"]');
+    const kode = Core.KODE_JENIS[form.jenis.value];
+    if (!kode) { idEl.value = ''; return ''; }
+    idEl.value = 'Membuat ID...';
+    try {
+      const id = await Core.generateId(kode, Core.SHEETS.PEMBAYARAN, 1);
+      idEl.value = id;
+      return id;
+    } catch (err) {
+      idEl.value = '';
+      Core.toast('❌ Gagal membuat ID: ' + err.message);
+      return '';
+    }
+  }
+
   async function render(view) {
     const [akunList, rows] = await Promise.all([
       loadAkunOptions(),
@@ -37,7 +54,7 @@ const PembayaranModule = (() => {
             </div>
             <div class="field">
               <label>Id Pembayaran</label>
-              <input name="id" required placeholder="PAY-001" />
+              <input name="id" required readonly placeholder="Otomatis setelah pilih jenis" />
             </div>
             <div class="field">
               <label>Tanggal Bayar</label>
@@ -102,7 +119,9 @@ const PembayaranModule = (() => {
       </div>
     `;
 
-    document.getElementById('formPembayaran').addEventListener('submit', onSubmit);
+    const form = document.getElementById('formPembayaran');
+    form.addEventListener('submit', onSubmit);
+    form.jenis.addEventListener('change', () => updateId(form)); // FIX
   }
 
   async function onSubmit(e) {
@@ -111,17 +130,21 @@ const PembayaranModule = (() => {
     const btn = form.querySelector('button[type="submit"]');
     Core.clearErrors(form);
 
-    const d = Core.serializeForm(form);
-    const values = [
-      d.jenis, d.id, d.tanggal, d.supplier, d.metode, d.akunKas,
-      Number(d.total) || 0, Number(d.sisaHutang) || 0,
-      '', d.terbitkan, d.status, '',
-    ];
-
     btn.disabled = true; btn.textContent = 'Menyimpan...';
     try {
+      // FIX: buat ulang ID tepat sebelum simpan supaya urutan tidak kembar
+      const newId = await updateId(form);
+      if (!newId) { Core.toast('⚠️ Pilih Jenis Pembayaran dulu'); return; }
+
+      const d = Core.serializeForm(form);
+      const values = [
+        d.jenis, d.id, d.tanggal, d.supplier, d.metode, d.akunKas,
+        Number(d.total) || 0, Number(d.sisaHutang) || 0,
+        '', d.terbitkan, d.status, '',
+      ];
+
       await Core.appendRow(Core.SHEETS.PEMBAYARAN, values);
-      Core.toast('✅ Pembayaran tersimpan!');
+      Core.toast('✅ Pembayaran tersimpan! ID: ' + d.id);
       form.reset();
       form.tanggal.value = Core.today();
       await PembayaranModule.render(document.getElementById('view'));
