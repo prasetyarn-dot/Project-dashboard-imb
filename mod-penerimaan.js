@@ -30,6 +30,24 @@ const PenerimaanModule = (() => {
     ).join('');
   }
 
+  // ID otomatis KODE-YYYYMMDD-URUTAN (kolom ID di sheet = index 1)
+  // Kode: Penjualan PJ, Pelunasan Piutang PP, Pendapatan Lain PL, Setoran Modal SM
+  async function updateId(form) {
+    const idEl = form.querySelector('[name="id"]');
+    const kode = Core.KODE_JENIS[form.jenisPenerimaan.value];
+    if (!kode) { idEl.value = ''; return ''; }
+    idEl.value = 'Membuat ID...';
+    try {
+      const id = await Core.generateId(kode, Core.SHEETS.PENERIMAAN, 1);
+      idEl.value = id;
+      return id;
+    } catch (err) {
+      idEl.value = '';
+      Core.toast('❌ Gagal membuat ID: ' + err.message);
+      return '';
+    }
+  }
+
   async function render(view) {
     view.innerHTML = `<div class="loading"><div class="spinner"></div>Memuat penerimaan...</div>`;
 
@@ -69,7 +87,7 @@ const PenerimaanModule = (() => {
             </div>
             <div class="field">
               <label>Id Penerimaan</label>
-              <input name="id" required placeholder="RCV-001" />
+              <input name="id" required readonly placeholder="Otomatis setelah pilih jenis" />
             </div>
             <div class="field">
               <label>Tanggal Terima</label>
@@ -78,13 +96,6 @@ const PenerimaanModule = (() => {
             <div class="field">
               <label>Diterima Dari</label>
               <input name="dari" required placeholder="Nama customer" />
-            </div>
-            <div class="field">
-              <label>Jenis</label>
-              <select name="jenis" required>
-                <option value="">Pilih...</option>
-                ${opt(JENIS)}
-              </select>
             </div>
             <div class="field">
               <label>Metode Terima</label>
@@ -159,7 +170,9 @@ const PenerimaanModule = (() => {
       </div>
     `;
 
-    document.getElementById('formPenerimaan').addEventListener('submit', onSubmit);
+    const form = document.getElementById('formPenerimaan');
+    form.addEventListener('submit', onSubmit);
+    form.jenisPenerimaan.addEventListener('change', () => updateId(form));
   }
 
   async function onSubmit(e) {
@@ -168,40 +181,42 @@ const PenerimaanModule = (() => {
     const btn = form.querySelector('button[type="submit"]');
     Core.clearErrors(form);
 
-    const d = Core.serializeForm(form);
-
-    // Validasi
-    if (!d.id || !d.jenisPenerimaan) {
-      Core.toast('⚠️ Lengkapi field wajib');
-      return;
-    }
-
-    // Urutan HARUS sesuai header sheet (A:N)
-    const values = [
-      d.jenisPenerimaan,       // A
-      d.id,                    // B
-      d.tanggal,               // C
-      d.dari,                  // D
-      d.jenis,                 // E
-      d.metode,                // F
-      d.tujuanKas,             // G
-      Number(d.total) || 0,    // H
-      Number(d.sisaPiutang) || 0, // I
-      d.bukti || '',           // J
-      d.terbitkanFaktur,       // K
-      d.terbitkanInvoice,      // L
-      d.status,                // M
-      d.catatan || '',         // N
-    ];
-
     btn.disabled = true; btn.textContent = 'Menyimpan...';
     try {
+      // Buat ulang ID tepat sebelum simpan supaya urutan tidak kembar
+      const newId = await updateId(form);
+      if (!newId) { Core.toast('⚠️ Pilih Jenis Penerimaan dulu'); return; }
+
+      const d = Core.serializeForm(form);
+
+      if (!d.id || !d.jenisPenerimaan) {
+        Core.toast('⚠️ Lengkapi field wajib');
+        return;
+      }
+
+      // Urutan HARUS sesuai header sheet (A:N)
+      const values = [
+        d.jenisPenerimaan,       // A
+        d.id,                    // B
+        d.tanggal,               // C
+        d.dari,                  // D
+        d.jenisPenerimaan,       // E (otomatis sama dengan Jenis Penerimaan)
+        d.metode,                // F
+        d.tujuanKas,             // G
+        Number(d.total) || 0,    // H
+        Number(d.sisaPiutang) || 0, // I
+        d.bukti || '',           // J
+        d.terbitkanFaktur,       // K
+        d.terbitkanInvoice,      // L
+        d.status,                // M
+        d.catatan || '',         // N
+      ];
+
       await Core.appendRow(Core.SHEETS.PENERIMAAN, values);
-      Core.toast('✅ Penerimaan tersimpan!');
+      Core.toast('✅ Penerimaan tersimpan! ID: ' + d.id);
       form.reset();
       form.tanggal.value = Core.today();
       form.status.value = 'Posted';
-      // Reload view
       await PenerimaanModule.render(document.getElementById('view'));
     } catch (err) {
       Core.toast('❌ ' + err.message);
