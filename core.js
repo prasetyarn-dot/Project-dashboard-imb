@@ -4,7 +4,7 @@
 
 const Core = (() => {
   // ⚠️ GANTI dengan URL Apps Script Web App kamu
-  const API_URL = 'https://script.google.com/macros/s/AKfycbygmBicMhguR0kPpgL6OLg4sIwflfXlsOo0FoLOkkcFSvE77ZzdEQ2bOCflRJRDZZZeNQ/exec';
+  const API_URL = 'https://script.google.com/macros/s/AKfycbxvQF-zVsW334Aw_-V8MV2uj-fIpbFFpR67w5agxytbwZMDJD3plinhWQwBQaBoXYn3xQ/exec';
 
   /* ---------- Toast ---------- */
   let toastTimer;
