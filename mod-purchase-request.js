@@ -207,7 +207,9 @@ const PurchaseRequestModule = (() => {
         if (!confirm('Hapus PR ' + item.r[1] + '?\nData tidak bisa dikembalikan.')) return;
         bHapus.disabled = true;
         try {
-          await Core.deleteRow(Core.SHEETS.PURCHASE_REQUEST, item.row);
+                    const baris = await cariBaris(item.r[1]);
+          if (!baris) { Core.toast('⚠️ Data tidak ditemukan, muat ulang halaman'); bHapus.disabled = false; return; }
+          await Core.deleteRow(Core.SHEETS.PURCHASE_REQUEST, baris);
           Core.invalidateCache(Core.SHEETS.PURCHASE_REQUEST);
           Core.toast('🗑️ PR dihapus');
           await PurchaseRequestModule.render(document.getElementById('view'));
@@ -237,13 +239,14 @@ const PurchaseRequestModule = (() => {
           d.status, d.catatan || '',
         ];
 
-        if (sedangEdit) {
-          await Core.updateRow(Core.SHEETS.PURCHASE_REQUEST, editingRow, values);
+                const barisAda = await cariBaris(d.id);
+        if (barisAda) {
+          await Core.updateRow(Core.SHEETS.PURCHASE_REQUEST, barisAda, values);
         } else {
           await Core.appendRow(Core.SHEETS.PURCHASE_REQUEST, values);
         }
         Core.invalidateCache(Core.SHEETS.PURCHASE_REQUEST);
-        Core.toast(sedangEdit ? '✅ PR diupdate' : '✅ PR tersimpan: ' + d.id);
+        Core.toast(barisAda ? '✅ PR diupdate: ' + d.id : '✅ PR tersimpan: ' + d.id);
         await PurchaseRequestModule.render(document.getElementById('view'));
       } catch (err) {
         Core.toast('❌ ' + err.message);
