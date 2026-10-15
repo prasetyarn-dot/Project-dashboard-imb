@@ -10,7 +10,7 @@ var Routes = {
   pembayaran:         { title: 'Pembayaran',       global: 'PembayaranModule',      file: 'pembayaran.js' },
   penerimaan:         { title: 'Penerimaan Uang',  global: 'PenerimaanModule',      file: 'penerimaan.js' },
   'pecah-dompet':     { title: 'Pecah Dompet',     global: 'PecahDompetModule',     file: 'pecah-dompet.js' },
-  'faktur-pembelian': { title: 'Faktur Pembelian', global: 'PembelianModule',       file: 'faktur-pembelian.js' },
+  'faktur-pembelian': { title: 'Faktur Pembelian', global: 'PembelianModule',       file: 'pembelian.js' },
   'faktur-penjualan': { title: 'Faktur Penjualan', global: 'FakturPenjualanModule', file: 'faktur-penjualan.js' },
   'purchase-request': { title: 'Purchase Request', global: 'PurchaseRequestModule', file: 'purchase-request.js' },
   inventory:          { title: 'Inventory',        global: 'InventoryModule',       file: 'inventory.js' },
